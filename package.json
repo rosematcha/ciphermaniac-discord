@@ -1,0 +1,28 @@
+{
+  "name": "ciphermaniac-discord",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc",
+    "lint": "eslint . --max-warnings 0",
+    "knip": "knip",
+    "check": "npm run typecheck && npm run lint && npm run knip && npm test"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^24.19.0",
+    "eslint": "^9.39.5",
+    "knip": "^6.38.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.1"
+  }
+}

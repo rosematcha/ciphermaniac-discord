@@ -1,23 +1,30 @@
+/**
+ * Messages as Discord shows them: a bold header line, then one small embed per
+ * followed player, its side bar coloured by how their round went. Discord allows
+ * ten embeds a message, so a long list of players runs over several messages.
+ */
+
 import { seatKey } from '../live/fold.ts';
 import { eventUrl } from '../live/source.ts';
-import type { LiveRound, LiveSeat } from '../live/types.ts';
+import type { LiveResult, LiveRound, LiveSeat } from '../live/types.ts';
 import type { FollowedSeat } from './follows.ts';
 import type { Milestone } from './milestones.ts';
 
-/** Marigold, ciphermaniac's dark-mode accent. */
-const COLOR = 0xeeaa11;
-/** Under Discord's 4096 so the overflow line always fits. */
-const MAX_DESCRIPTION = 3900;
+/** Ciphermaniac's dark-mode marigold, for a round still being played. */
+const ACCENT = 0xeeaa11;
+/** Discord's own green, red and grey. */
+const COLORS: Record<LiveResult | 'none', number> = { win: 0x23a55a, loss: 0xf23f43, tie: 0x80848e, none: 0x80848e };
+const EMBEDS_PER_MESSAGE = 10;
 
 interface Embed {
   title: string;
-  url: string;
   description: string;
   color: number;
 }
 
 /** A message body as Discord's API takes it. Mentions are off: player names are not pings. */
 export interface MessagePayload {
+  content: string;
   embeds: Embed[];
   allowedMentions: { parse: [] };
 }
@@ -31,6 +38,11 @@ export interface RenderContext {
 
 function escape(text: string): string {
   return text.replace(/([\\*_~`|>[\]])/g, '\\$1');
+}
+
+/** "Frankfurt" for "Frankfurt Regional Championships", or the whole name if that leaves nothing. */
+function shortName(eventName: string): string {
+  return eventName.replace(/\s*\b(?:Regional|International|World)?\s*Championships$/i, '').trim() || eventName;
 }
 
 function record(seat: LiveSeat): string {
@@ -62,96 +74,66 @@ function opponentText(seat: LiveSeat, decks: RenderContext['decks']): string {
   return deck ? `${escape(seat.name)} (${escape(deck)})` : escape(seat.name);
 }
 
-/** Joins lines up to the length Discord allows, then says how many were left out. */
-function describe(lines: readonly string[]): string {
-  const kept: string[] = [];
-  let length = 0;
-  for (const line of lines) {
-    if (length + line.length + 1 > MAX_DESCRIPTION) {
-      kept.push(`and ${lines.length - kept.length} more`);
-      break;
-    }
-    kept.push(line);
-    length += line.length + 1;
+/** A player's name, with a record unless the round is top cut, where records are frozen. */
+function playerTitle(seat: LiveSeat, context: RenderContext, shown: string): string {
+  return context.round.topCut ? escape(seat.name) : `${escape(seat.name)} · ${shown}`;
+}
+
+/** The header on the first message and the embeds, split into as many messages as Discord needs. */
+function messages(header: string, embeds: readonly Embed[]): MessagePayload[] {
+  const payloads: MessagePayload[] = [];
+  for (let start = 0; start < embeds.length; start += EMBEDS_PER_MESSAGE) {
+    payloads.push({
+      content: start === 0 ? header : '',
+      embeds: embeds.slice(start, start + EMBEDS_PER_MESSAGE),
+      allowedMentions: { parse: [] }
+    });
   }
-  return kept.join('\n');
+  return payloads;
 }
 
-function payload(context: RenderContext, title: string, lines: readonly string[]): MessagePayload {
-  return {
-    embeds: [
-      {
-        title: `${context.eventName} · ${title}`,
-        url: eventUrl(context.slug),
-        description: describe(lines),
-        color: COLOR
-      }
-    ],
-    allowedMentions: { parse: [] }
-  };
+function header(context: RenderContext, title: string, link: boolean): string {
+  const bold = `**${escape(`${shortName(context.eventName)} · ${title}`)}**`;
+  // Angle brackets keep Discord from unfurling a preview of the page.
+  return link ? `${bold} · [live](<${eventUrl(context.slug)}>)` : bold;
 }
 
-function followedText(entry: FollowedSeat, withRecord: boolean): string {
-  const name = `**${escape(entry.seat.name)}**`;
-  return withRecord ? `${name} (${enteringRecord(entry.seat)})` : name;
-}
-
-function pairingLine(entry: FollowedSeat, followed: ReadonlySet<LiveSeat>, context: RenderContext): string {
-  const withRecord = !context.round.topCut;
-  const player = followedText(entry, withRecord);
-  const { opponent } = entry;
-  if (!opponent) {
-    return entry.seat.result === 'win' ? `${player} has a bye` : `${player} is unpaired`;
-  }
-  const other = followed.has(opponent)
-    ? `**${escape(opponent.name)}**`
-    : opponentText(opponent, context.decks);
-  const table = entry.match.table > 0 ? `Table ${entry.match.table} · ` : '';
-  return `${table}${player} vs ${other}`;
-}
-
-/** Pairings for the followed players, one line a match: two followed players at one table share it. */
-export function renderPairings(entries: readonly FollowedSeat[], context: RenderContext): MessagePayload {
-  const followed = new Set(entries.map(entry => entry.seat));
-  const shown = new Set<FollowedSeat['match']>();
-  const lines: string[] = [];
-  for (const entry of entries) {
-    if (!shown.has(entry.match)) {
-      shown.add(entry.match);
-      lines.push(pairingLine(entry, followed, context));
-    }
-  }
-  return payload(context, `${roundLabel(context.round)} pairings`, lines);
-}
-
-const VERBS = { win: 'beat', loss: 'lost to', tie: 'tied with' } as const;
-
-function resultPhrase(entry: FollowedSeat, context: RenderContext): string {
+function pairingText(entry: FollowedSeat, context: RenderContext): string {
   const { opponent, seat } = entry;
   if (!opponent) {
-    return seat.result === 'win' ? 'had a bye' : 'took an unpaired loss';
+    return seat.result === 'win' ? 'Bye' : 'Unpaired';
+  }
+  const table = entry.match.table > 0 ? `Table ${entry.match.table} vs ` : 'vs ';
+  return `${table}${opponentText(opponent, context.decks)}`;
+}
+
+export function renderPairings(entries: readonly FollowedSeat[], context: RenderContext): MessagePayload[] {
+  const embeds = entries.map(entry => ({
+    title: playerTitle(entry.seat, context, enteringRecord(entry.seat)),
+    description: pairingText(entry, context),
+    color: ACCENT
+  }));
+  return messages(header(context, roundLabel(context.round), true), embeds);
+}
+
+const WORDS = { win: 'Won', loss: 'Lost', tie: 'Tied' } as const;
+
+function resultText(entry: FollowedSeat, context: RenderContext): string {
+  const { opponent, seat } = entry;
+  if (!opponent) {
+    return seat.result === 'win' ? 'Bye' : 'Unpaired loss';
   }
   const against = opponentText(opponent, context.decks);
-  return seat.result ? `${VERBS[seat.result]} ${against}` : `played ${against}, no result posted`;
+  return seat.result ? `${WORDS[seat.result]} vs ${against}` : `No result posted vs ${against}`;
 }
 
-function resultLine(entry: FollowedSeat, context: RenderContext): string {
-  const parts = [`**${escape(entry.seat.name)}** ${resultPhrase(entry, context)}`];
-  if (!context.round.topCut) {
-    parts.push(record(entry.seat));
-  }
-  if (entry.seat.dropped) {
-    parts.push('dropped');
-  }
-  return parts.join(' · ');
-}
-
-export function renderResults(entries: readonly FollowedSeat[], context: RenderContext): MessagePayload {
-  return payload(
-    context,
-    `${roundLabel(context.round)} results`,
-    entries.map(entry => resultLine(entry, context))
-  );
+export function renderResults(entries: readonly FollowedSeat[], context: RenderContext): MessagePayload[] {
+  const embeds = entries.map(entry => ({
+    title: playerTitle(entry.seat, context, record(entry.seat)),
+    description: entry.seat.dropped ? `${resultText(entry, context)} · dropped` : resultText(entry, context),
+    color: COLORS[entry.seat.result ?? 'none']
+  }));
+  return messages(header(context, `${roundLabel(context.round)} results`, false), embeds);
 }
 
 /** Followed players who made Day 2 or the top cut, with the record that got them there. */
@@ -159,8 +141,12 @@ export function renderMilestone(
   milestone: Milestone,
   entries: readonly FollowedSeat[],
   context: RenderContext
-): MessagePayload {
+): MessagePayload[] {
   const title = milestone.kind === 'day2' ? 'Day 2' : `Top ${milestone.size}`;
-  const lines = entries.map(entry => `**${escape(entry.seat.name)}** advanced at ${enteringRecord(entry.seat)}`);
-  return payload(context, title, lines);
+  const embeds = entries.map(entry => ({
+    title: `${escape(entry.seat.name)} · ${enteringRecord(entry.seat)}`,
+    description: title,
+    color: COLORS.win
+  }));
+  return messages(header(context, title, false), embeds);
 }

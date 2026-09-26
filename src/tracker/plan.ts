@@ -52,14 +52,19 @@ export function isFinished(index: LiveIndex, progress: Progress): boolean {
   return index.finished === true && progress.resultsDone >= index.round;
 }
 
-function send(key: string, payload: MessagePayload): Step & { kind: 'send' } {
-  return { kind: 'send', key, payload, body: JSON.stringify(payload) };
+/** One step per message; a long render runs over several, keyed `{key}`, `{key}:2` and on. */
+function send(key: string, payloads: readonly MessagePayload[]): (Step & { kind: 'send' })[] {
+  return payloads.map((payload, i) => ({
+    kind: 'send',
+    key: i === 0 ? key : `${key}:${i + 1}`,
+    payload,
+    body: JSON.stringify(payload)
+  }));
 }
 
-/** A send for a new message, or an edit of a sent one whose content has changed. */
-function sendIfChanged(key: string, payload: MessagePayload, progress: Progress): Step[] {
-  const step = send(key, payload);
-  return progress.messages[key]?.body === step.body ? [] : [step];
+/** Sends for new messages, and edits of sent ones whose content has changed. */
+function sendIfChanged(key: string, payloads: readonly MessagePayload[], progress: Progress): Step[] {
+  return send(key, payloads).filter(step => progress.messages[step.key]?.body !== step.body);
 }
 
 function milestoneSteps(view: EventView, round: LiveRound, entries: FollowedSeat[], context: RenderContext, progress: Progress): Step[] {
@@ -68,7 +73,7 @@ function milestoneSteps(view: EventView, round: LiveRound, entries: FollowedSeat
   if (!milestone || key in progress.messages) {
     return [];
   }
-  return [send(key, renderMilestone(milestone, entries, context))];
+  return send(key, renderMilestone(milestone, entries, context));
 }
 
 interface RoundPlan {
@@ -91,7 +96,7 @@ function planRound(view: EventView, round: LiveRound, follows: readonly Follow[]
     steps.push(...sendIfChanged(`r${round.round}:pairings`, renderPairings(entries, context), progress));
     return { steps, done: false };
   }
-  steps.push(send(`r${round.round}:results`, renderResults(entries, context)), { kind: 'advance', round: round.round });
+  steps.push(...send(`r${round.round}:results`, renderResults(entries, context)), { kind: 'advance', round: round.round });
   return { steps, done: true };
 }
 

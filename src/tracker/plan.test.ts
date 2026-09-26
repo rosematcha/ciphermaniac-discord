@@ -32,10 +32,14 @@ function sent(steps: Step[]): string[] {
   return steps.map(step => (step.kind === 'send' ? step.key : `advance ${step.round}`));
 }
 
+const BARS: Record<number, string> = { 0xeeaa11: 'playing', 0x23a55a: 'win', 0xf23f43: 'loss', 0x80848e: 'grey' };
+
+/** A sent message as lines: its header, then `[bar] title | description` for each embed. */
 function text(steps: Step[], key: string): string {
   const step = steps.find(s => s.kind === 'send' && s.key === key);
   assert.ok(step?.kind === 'send', `no ${key}`);
-  return step.payload.embeds.map(embed => `${embed.title}\n${embed.description}`).join('\n');
+  const { content, embeds } = step.payload;
+  return [content, ...embeds.map(e => `[${BARS[e.color] ?? e.color}] ${e.title} | ${e.description}`)].join('\n');
 }
 
 /** Round 4 at Frankfurt: the four squad members there, Reese is at Brisbane. */
@@ -53,9 +57,9 @@ describe('plan', () => {
     const steps = plan(view(4, [frankfurtRound4(false)], { decks: { 'luca rossi|IT': "N's Zoroark" } }), squad, progress(3));
     assert.deepEqual(sent(steps), ['r4:pairings']);
     const body = text(steps, 'r4:pairings');
-    assert.match(body, /Round 4 pairings/);
-    assert.match(body, /Table 12 · \*\*Tord Reklev\*\* \(3-0-0\) vs Ahmed Nasser$/m);
-    assert.match(body, /Table 40 · \*\*Jasmine Dickinson\*\* \(2-1-0\) vs Luca Rossi \(N's Zoroark\)/);
+    assert.match(body, /^\*\*Frankfurt · Round 4\*\* · \[live\]\(<https:\/\/ciphermaniac\.com\/live\/frankfurt-2027>\)$/m);
+    assert.match(body, /^\[playing\] Tord Reklev · 3-0-0 \| Table 12 vs Ahmed Nasser$/m);
+    assert.match(body, /^\[playing\] Jasmine Dickinson · 2-1-0 \| Table 40 vs Luca Rossi \(N's Zoroark\)$/m);
     assert.doesNotMatch(body, /Reese/);
     // Table order, not follow order.
     assert.ok(body.indexOf('Emma') < body.indexOf('Natalie'));
@@ -68,8 +72,9 @@ describe('plan', () => {
 
     const steps = plan(view(4, [frankfurtRound4(true)]), squad, progress(3, ['r4:pairings']));
     assert.deepEqual(sent(steps), ['r4:results', 'advance 4']);
-    assert.match(text(steps, 'r4:results'), /\*\*Tord Reklev\*\* beat Ahmed Nasser · 4-0-0/);
-    assert.match(text(steps, 'r4:results'), /\*\*Natalie Millar\*\* lost to Jan Novak · 0-4-0/);
+    assert.match(text(steps, 'r4:results'), /^\*\*Frankfurt · Round 4 results\*\*$/m);
+    assert.match(text(steps, 'r4:results'), /^\[win\] Tord Reklev · 4-0-0 \| Won vs Ahmed Nasser$/m);
+    assert.match(text(steps, 'r4:results'), /^\[loss\] Natalie Millar · 0-4-0 \| Lost vs Jan Novak$/m);
   });
 
   it('marks a drop, then stops waiting on the dropped player', () => {
@@ -77,7 +82,7 @@ describe('plan', () => {
     const natalie = r4.matches[2];
     assert.ok(natalie?.seats[0]);
     natalie.seats[0].dropped = true;
-    assert.match(text(plan(view(4, [r4]), squad, progress(3)), 'r4:results'), /Natalie Millar\*\* lost to Jan Novak · 0-4-0 · dropped/);
+    assert.match(text(plan(view(4, [r4]), squad, progress(3)), 'r4:results'), /^\[loss\] Natalie Millar · 0-4-0 \| Lost vs Jan Novak · dropped$/m);
 
     // Round 5 is paired without her; the other three finishing is enough.
     const r5 = round(5, [
@@ -113,8 +118,8 @@ describe('plan', () => {
     const steps = plan(view(10, [r9, r10]), squad, progress(9));
     assert.deepEqual(sent(steps), ['r10:milestone', 'r10:pairings']);
     const highlight = text(steps, 'r10:milestone');
-    assert.match(highlight, /Frankfurt · Day 2/);
-    assert.match(highlight, /\*\*Tord Reklev\*\* advanced at 8-1-0/);
+    assert.match(highlight, /^\*\*Frankfurt · Day 2\*\*$/m);
+    assert.match(highlight, /^\[win\] Tord Reklev · 8-1-0 \| Day 2$/m);
     assert.doesNotMatch(highlight, /Emma/);
 
     // The highlight is sent once.
@@ -143,8 +148,9 @@ describe('plan', () => {
     assert.deepEqual(sent(steps), ['r15:milestone', 'r15:results', 'advance 15', 'r16:pairings']);
     assert.match(text(steps, 'r15:milestone'), /Top 8/);
     assert.match(text(steps, 'r15:results'), /Top 8 results/);
-    assert.match(text(steps, 'r15:results'), /\*\*Emma Hagen\*\* lost to Adam Denk$/m);
-    assert.match(text(steps, 'r16:pairings'), /Top 4 pairings/);
+    assert.match(text(steps, 'r15:results'), /^\[loss\] Emma Hagen \| Lost vs Adam Denk$/m);
+    assert.match(text(steps, 'r16:pairings'), /^\*\*Frankfurt · Top 4\*\*/m);
+    assert.match(text(steps, 'r16:pairings'), /^\[playing\] Tord Reklev \| Table 1 vs Adam Denk$/m);
     assert.doesNotMatch(text(steps, 'r16:pairings'), /Emma/);
   });
 
@@ -170,14 +176,24 @@ describe('plan', () => {
   it('shows a bye', () => {
     const r2 = round(2, [{ table: 0, seats: [seat('Tord Reklev', 'NO', 2, 0, { result: 'win' })], complete: true }, match(1, seat('Emma Hagen', 'NO', 1), seat('Z', 'DE', 1))]);
     const steps = plan(view(2, [r2]), squad, progress(1));
-    assert.match(text(steps, 'r2:pairings'), /\*\*Tord Reklev\*\* \(1-0-0\) has a bye/);
+    assert.match(text(steps, 'r2:pairings'), /^\[playing\] Tord Reklev · 1-0-0 \| Bye$/m);
   });
 
-  it('shows two followed players at one table once', () => {
+  it('gives two followed players at one table an embed each', () => {
     const r2 = round(2, [match(9, seat('Tord Reklev', 'NO', 1), seat('Emma Hagen', 'NO', 1))]);
     const body = text(plan(view(2, [r2]), squad, progress(1)), 'r2:pairings');
-    assert.equal(body.split('\n').length, 2);
-    assert.match(body, /\*\*Tord Reklev\*\* \(1-0-0\) vs \*\*Emma Hagen\*\*/);
+    assert.match(body, /^\[playing\] Tord Reklev · 1-0-0 \| Table 9 vs Emma Hagen$/m);
+    assert.match(body, /^\[playing\] Emma Hagen · 1-0-0 \| Table 9 vs Tord Reklev$/m);
+  });
+
+  it('runs more than ten players over several messages, the header on the first', () => {
+    const many = Array.from({ length: 23 }, (_, i) => follow(`Player ${i}`, 'US'));
+    const r1 = round(1, many.map((f, i) => match(i + 1, seat(f.name, 'US'), seat(`Opp ${i}`, 'DE'))));
+    const steps = plan(view(1, [r1]), many, progress(0));
+    assert.deepEqual(sent(steps), ['r1:pairings', 'r1:pairings:2', 'r1:pairings:3']);
+    assert.equal(text(steps, 'r1:pairings').split('\n').length, 11);
+    assert.match(text(steps, 'r1:pairings:2'), /^\n\[playing\] Player 10 /);
+    assert.equal(text(steps, 'r1:pairings:3').split('\n').length, 4);
   });
 
   it('escapes Discord markdown in names', () => {
@@ -206,7 +222,7 @@ describe('plan with RK9 gaps', () => {
       match(3, seat('Tord Reklev', 'NO', 7), seat('A', 'IT', 7), 'a'),
       match(9, seat('Emma Hagen', 'NO', 5, 2), seat('B', 'IT', 5, 2))
     ]);
-    assert.match(text(plan(view(8, [r8]), squad, progress(7)), 'r8:pairings'), /\*\*Tord Reklev\*\* \(7-0-0\)/);
+    assert.match(text(plan(view(8, [r8]), squad, progress(7)), 'r8:pairings'), /^\[playing\] Tord Reklev · 7-0-0 \|/m);
   });
 
   it('reports a past round RK9 never finished rather than stalling on it', () => {
@@ -214,6 +230,6 @@ describe('plan with RK9 gaps', () => {
     const r9 = round(9, [match(1, seat('Tord Reklev', 'NO', 8), seat('B', 'IT', 8))]);
     const steps = plan(view(9, [r8, r9]), squad, progress(7));
     assert.deepEqual(sent(steps), ['r8:results', 'advance 8', 'r9:pairings']);
-    assert.match(text(steps, 'r8:results'), /\*\*Tord Reklev\*\* played A, no result posted · 7-0-0/);
+    assert.match(text(steps, 'r8:results'), /^\[grey\] Tord Reklev · 7-0-0 \| No result posted vs A$/m);
   });
 });

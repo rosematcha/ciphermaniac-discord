@@ -48,9 +48,10 @@ function recorder(): Sender & { posts: Posted[]; edits: string[]; gone: Set<stri
   const posts: Posted[] = [];
   const edits: string[] = [];
   const gone = new Set<string>();
+  // The header without its markdown or link, and a line per player embed.
   const summary = (payload: MessagePayload) => ({
-    title: payload.embeds[0]?.title ?? '',
-    description: payload.embeds[0]?.description ?? ''
+    title: payload.content.replace(/\*\*/g, '').replace(/ · \[live\].*$/, ''),
+    description: payload.embeds.map(e => `${e.title} | ${e.description}`).join('\n')
   });
   return {
     posts,
@@ -103,7 +104,7 @@ describe('Runner', () => {
     publish('frankfurt-2027', frankfurt(false));
     publish('brisbane-2027', brisbane(false));
     await runner.tick(NOW);
-    assert.deepEqual(sender.posts.map(p => p.title), ['Frankfurt · Round 3 pairings', 'Brisbane · Round 5 pairings']);
+    assert.deepEqual(sender.posts.map(p => p.title), ['Frankfurt · Round 3', 'Brisbane · Round 5']);
     assert.equal(sender.posts[0]?.description.split('\n').length, 4);
 
     publish('brisbane-2027', brisbane(true), 'done');
@@ -176,7 +177,7 @@ describe('Runner', () => {
     publish('frankfurt-2027', round(4, [match(1, seat('Tord Reklev', 'NO', 3), seat('F', 'DE', 3))]));
     await runner.tick(NOW);
     const results = sender.posts.find(p => p.title.endsWith('Round 3 results'));
-    assert.match(results?.description ?? '', /\*\*Tord Reklev\*\* beat A · 3-0-0/);
+    assert.match(results?.description ?? '', /^Tord Reklev · 3-0-0 \| Won vs A$/m);
     assert.doesNotMatch(results?.description ?? '', /no result posted/);
   });
 
@@ -218,7 +219,7 @@ describe('Runner', () => {
       log: () => undefined
     });
     await runner.tick(NOW);
-    assert.deepEqual(sender.posts.map(p => p.title), ['Frankfurt · Round 3 pairings']);
+    assert.deepEqual(sender.posts.map(p => p.title), ['Frankfurt · Round 3']);
   });
 
   it('leaves events off this weekend alone', async () => {

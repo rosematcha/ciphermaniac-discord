@@ -8,12 +8,15 @@ import { commandData } from './discord/commands.ts';
 import type { Context } from './discord/context.ts';
 import { handleInteraction, welcome } from './discord/interactions.ts';
 import { discordSender } from './discord/sender.ts';
+import { Alarm, listenForNotices } from './live/notices.ts';
 import { fetchDecks, fetchIndex, fetchPlayerIndex, fetchRound, fetchSchedule } from './live/source.ts';
 import { Directory } from './players/directory.ts';
 import { Store } from './store/store.ts';
 import { Runner } from './tracker/runner.ts';
 
 const TICK_MS = 60_000;
+/** Looks follow notices at most this often, however many arrive. */
+const NOTICE_GAP_MS = 1_000;
 const DIRECTORY_MS = 12 * 3_600_000;
 const SHUTDOWN_GRACE_MS = 8_000;
 
@@ -35,6 +38,17 @@ async function every(intervalMs: number, task: () => Promise<void>, signal: Abor
   }
 }
 
+/** Runs `task` a minute after the last run ended, or sooner on a notice from the poller. */
+async function onTickOrNotice(alarm: Alarm, task: () => Promise<void>, signal: AbortSignal): Promise<void> {
+  while (!signal.aborted) {
+    await task().catch((error: unknown) => {
+      console.error(error);
+    });
+    await sleep(NOTICE_GAP_MS, undefined, { signal }).catch(() => undefined);
+    await alarm.wait(TICK_MS - NOTICE_GAP_MS, signal);
+  }
+}
+
 async function loadDirectory(directory: Directory): Promise<void> {
   const index = await fetchPlayerIndex();
   if (index) {
@@ -51,6 +65,14 @@ const context: Context = { store, directory, ownerId: process.env.OWNER_ID ?? ''
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const stop = new AbortController();
 const loops: Promise<void>[] = [];
+const alarm = new Alarm();
+const noticePort = Number(process.env.NOTICE_PORT ?? '');
+const notices =
+  Number.isInteger(noticePort) && noticePort > 0
+    ? listenForNotices(noticePort, () => {
+        alarm.ring();
+      })
+    : null;
 
 client.once(Events.ClientReady, ready => {
   console.log(`logged in as ${ready.user.tag} in ${ready.guilds.cache.size} servers`);
@@ -63,7 +85,10 @@ client.once(Events.ClientReady, ready => {
     store,
     directory
   });
-  loops.push(every(DIRECTORY_MS, () => loadDirectory(directory), stop.signal), every(TICK_MS, () => runner.tick(), stop.signal));
+  loops.push(
+    every(DIRECTORY_MS, () => loadDirectory(directory), stop.signal),
+    onTickOrNotice(alarm, () => runner.tick(), stop.signal)
+  );
 });
 
 client.on(Events.GuildCreate, guild => {
@@ -89,6 +114,7 @@ client.on(Events.InteractionCreate, interaction => {
  */
 async function shutdown(): Promise<void> {
   stop.abort();
+  notices?.close();
   await Promise.race([Promise.all(loops), sleep(SHUTDOWN_GRACE_MS)]);
   await client.destroy();
   store.close();

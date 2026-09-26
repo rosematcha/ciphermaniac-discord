@@ -3,6 +3,9 @@ services:
     image: ghcr.io/rosematcha/ciphermaniac-discord:latest
     restart: unless-stopped
     env_file: .env
+    # The live poller on the host notifies here; bound to loopback so nothing outside can.
+    ports:
+      - 127.0.0.1:8792:8792
     volumes:
       - ./data:/app/data
     mem_limit: 256m

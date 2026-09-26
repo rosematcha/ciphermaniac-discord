@@ -1,0 +1,11 @@
+[Unit]
+Description=Pull and restart ciphermaniac-discord if a new image is out
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/ciphermaniac-discord
+ExecStart=/usr/bin/docker compose pull --quiet
+ExecStart=/usr/bin/docker compose up --detach --remove-orphans
+ExecStartPost=/usr/bin/docker image prune --force --filter label=org.opencontainers.image.source=https://github.com/rosematcha/ciphermaniac-discord

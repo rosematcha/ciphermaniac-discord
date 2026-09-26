@@ -127,10 +127,12 @@ export class Store {
       .run(guildId, slug, JSON.stringify(progress));
   }
 
-  /** Drops progress for events no longer on the schedule. */
-  pruneProgress(liveSlugs: readonly string[]): void {
-    const placeholders = liveSlugs.map(() => '?').join(', ');
-    const where = liveSlugs.length > 0 ? `WHERE slug NOT IN (${placeholders})` : '';
-    this.#db.prepare(`DELETE FROM progress ${where}`).run(...liveSlugs);
+  /** Drops progress for events no longer on the schedule. An empty schedule is taken as a bad read and prunes nothing. */
+  pruneProgress(scheduled: readonly string[]): void {
+    if (scheduled.length === 0) {
+      return;
+    }
+    const placeholders = scheduled.map(() => '?').join(', ');
+    this.#db.prepare(`DELETE FROM progress WHERE slug NOT IN (${placeholders})`).run(...scheduled);
   }
 }

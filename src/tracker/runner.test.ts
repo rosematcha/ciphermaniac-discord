@@ -167,6 +167,60 @@ describe('Runner', () => {
     assert.equal(store.progress('guild', 'frankfurt-2027')?.resultsDone, 3);
   });
 
+  it("uses a round's final results even when they landed between polls", async () => {
+    const { world, sender, runner, publish } = setup();
+    publish('frankfurt-2027', frankfurt(false));
+    await runner.tick(NOW);
+    // Round 3 finishes and round 4 is paired before the next poll.
+    world.rounds.set('frankfurt-2027:3', frankfurt(true));
+    publish('frankfurt-2027', round(4, [match(1, seat('Tord Reklev', 'NO', 3), seat('F', 'DE', 3))]));
+    await runner.tick(NOW);
+    const results = sender.posts.find(p => p.title.endsWith('Round 3 results'));
+    assert.match(results?.description ?? '', /\*\*Tord Reklev\*\* beat A · 3-0-0/);
+    assert.doesNotMatch(results?.description ?? '', /no result posted/);
+  });
+
+  it('keeps its progress through a missing or failing schedule', async () => {
+    const { world, store, sender, runner, publish } = setup();
+    publish('frankfurt-2027', frankfurt(false));
+    await runner.tick(NOW);
+    const later = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000);
+    const real = runner;
+    let fetches = 0;
+    const flaky = new Runner({
+      source: {
+        ...source(world),
+        fetchSchedule: () => (++fetches === 1 ? source(world).fetchSchedule() : fetches === 2 ? Promise.resolve(null) : Promise.reject(new Error('503')))
+      },
+      sender,
+      store,
+      directory: new Directory(),
+      log: () => undefined
+    });
+    await flaky.tick(NOW);
+    await flaky.tick(later(11));
+    await flaky.tick(later(22));
+    assert.ok(store.progress('guild', 'frankfurt-2027'));
+    assert.equal(sender.posts.length, 1);
+    await real.tick(later(33));
+    assert.equal(sender.posts.length, 1);
+  });
+
+  it('still posts when the deck reports cannot be read', async () => {
+    const { world, store, sender } = setup();
+    world.rounds.set('frankfurt-2027:3', frankfurt(false));
+    world.indexes.set('frankfurt-2027', { ...index(3, { slug: 'frankfurt-2027' }), name: 'Frankfurt' });
+    const runner = new Runner({
+      source: { ...source(world), fetchDecks: () => Promise.reject(new Error('502')) },
+      sender,
+      store,
+      directory: new Directory(),
+      log: () => undefined
+    });
+    await runner.tick(NOW);
+    assert.deepEqual(sender.posts.map(p => p.title), ['Frankfurt · Round 3 pairings']);
+  });
+
   it('leaves events off this weekend alone', async () => {
     const { world, runner, publish } = setup();
     publish('recife-2027', round(1, [match(1, seat('Tord Reklev', 'NO'), seat('X', 'BR'))]));

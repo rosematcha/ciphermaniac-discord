@@ -48,7 +48,11 @@ export class Runner {
   readonly #deps: RunnerDeps;
   readonly #log: (message: string) => void;
   #schedule: { events: LiveEvent[]; at: number } | null = null;
-  /** Rounds by `{slug}:{round}`. A past round never changes; the current one is refetched when the index hash moves. */
+  /**
+   * Rounds by `{slug}:{round}`. The current round is refetched when the index hash moves, and once more
+   * after it stops being current, since its last results can land in the same minute the next round is
+   * paired. After that a round never changes.
+   */
   readonly #rounds = new Map<string, CachedRound>();
 
   constructor(deps: RunnerDeps) {
@@ -57,9 +61,10 @@ export class Runner {
   }
 
   async tick(now = new Date()): Promise<void> {
-    const events = await this.#events(now);
+    const live = (await this.#events(now)).filter(e => isEventLive(e, now));
+    this.#evictExcept(new Set(live.map(event => event.slug)));
     const subscribers = this.#deps.store.subscribers();
-    for (const event of events.filter(e => isEventLive(e, now))) {
+    for (const event of live) {
       try {
         await this.#tickEvent(event, subscribers);
       } catch (error) {
@@ -68,19 +73,47 @@ export class Runner {
     }
   }
 
+  /**
+   * The schedule, refreshed every few minutes. A failed or missing refresh keeps the last one: an empty
+   * schedule would prune every server's progress and have it all posted again.
+   */
   async #events(now: Date): Promise<LiveEvent[]> {
-    if (!this.#schedule || now.getTime() - this.#schedule.at >= SCHEDULE_TTL_MS) {
-      const schedule = await this.#deps.source.fetchSchedule();
-      this.#schedule = { events: schedule?.events ?? [], at: now.getTime() };
-      this.#deps.store.pruneProgress(this.#schedule.events.map(event => event.slug));
+    if (this.#schedule && now.getTime() - this.#schedule.at < SCHEDULE_TTL_MS) {
+      return this.#schedule.events;
     }
-    return this.#schedule.events;
+    const schedule = await this.#deps.source.fetchSchedule().catch((error: unknown) => {
+      this.#log(`schedule: ${String(error)}`);
+      return null;
+    });
+    if (schedule?.events.length) {
+      this.#schedule = { events: schedule.events, at: now.getTime() };
+      this.#deps.store.pruneProgress(schedule.events.map(event => event.slug));
+    }
+    return this.#schedule?.events ?? [];
   }
 
+  /** Drops cached rounds of events that are no longer live. */
+  #evictExcept(live: ReadonlySet<string>): void {
+    for (const key of this.#rounds.keys()) {
+      if (!live.has(key.slice(0, key.lastIndexOf(':')))) {
+        this.#rounds.delete(key);
+      }
+    }
+  }
+
+  /** Drops an event's cached rounds before `from`; no server will look at them again. */
+  #evictBefore(slug: string, from: number): void {
+    let number = from - 1;
+    while (this.#rounds.delete(`${slug}:${number}`)) {
+      number -= 1;
+    }
+  }
+
+  /** `hash` is the index hash for the current round, `null` for a past one. */
   async #round(slug: string, number: number, hash: string | null): Promise<LiveRound | null> {
     const key = `${slug}:${number}`;
     const cached = this.#rounds.get(key);
-    if (cached && (hash === null || cached.hash === hash)) {
+    if (cached?.hash === hash) {
       return cached.round;
     }
     const round = await this.#deps.source.fetchRound(slug, number);
@@ -102,7 +135,9 @@ export class Runner {
     if (tracked.length === 0) {
       return;
     }
-    const view = await this.#view(event.slug, index, Math.min(...tracked.map(t => t.progress.resultsDone)));
+    const earliest = Math.min(...tracked.map(t => t.progress.resultsDone));
+    this.#evictBefore(event.slug, earliest);
+    const view = await this.#view(event.slug, index, earliest);
     for (const entry of tracked) {
       await this.#deliver(event.slug, entry, plan(view, entry.subscriber.follows, entry.progress));
     }
@@ -132,7 +167,12 @@ export class Runner {
         rounds.set(number, round);
       }
     }
-    return { slug, index, rounds, decks: await this.#deps.source.fetchDecks(slug) };
+    // Decks only add archetypes to the messages; they are not worth holding the round back for.
+    const decks = await this.#deps.source.fetchDecks(slug).catch((error: unknown) => {
+      this.#log(`${slug} decks: ${String(error)}`);
+      return {};
+    });
+    return { slug, index, rounds, decks };
   }
 
   /** Sends in order, saving after each step; stops at the first failure so nothing goes out of order. */

@@ -48,7 +48,7 @@ describe('Store', () => {
     assert.equal(store.progress('g1', 'baltimore-2027'), null);
     assert.ok(store.progress('g1', 'frankfurt-2027'));
     store.pruneProgress([]);
-    assert.equal(store.progress('g1', 'frankfurt-2027'), null);
+    assert.ok(store.progress('g1', 'frankfurt-2027'));
   });
 
   it('forgets a removed server', () => {

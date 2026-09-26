@@ -12,7 +12,7 @@ import { type Follow, type FollowedSeat, findFollowed } from './follows.ts';
 import { milestoneFor } from './milestones.ts';
 import { type MessagePayload, type RenderContext, renderMilestone, renderPairings, renderResults } from './render.ts';
 
-export interface SentMessage {
+interface SentMessage {
   channelId: string;
   messageId: string;
   /** The payload as last sent, to tell whether an edit is due. */
@@ -85,11 +85,10 @@ function planRound(view: EventView, round: LiveRound, follows: readonly Follow[]
   }
   const context: RenderContext = { slug: view.slug, eventName: view.index.name, round, decks: view.decks };
   const steps = milestoneSteps(view, round, entries, context, progress);
-  if (!entries.every(entry => entry.match.complete)) {
-    // The poller only moves on from a complete round, so only the current one waits, its pairings kept current meanwhile.
-    if (isCurrent) {
-      steps.push(...sendIfChanged(`r${round.round}:pairings`, renderPairings(entries, context), progress));
-    }
+  // Only the current round waits for results, its pairings kept current meanwhile. A past round is
+  // reported with what it has: RK9 sometimes never fills in a round's last results.
+  if (isCurrent && !entries.every(entry => entry.match.complete)) {
+    steps.push(...sendIfChanged(`r${round.round}:pairings`, renderPairings(entries, context), progress));
     return { steps, done: false };
   }
   steps.push(send(`r${round.round}:results`, renderResults(entries, context)), { kind: 'advance', round: round.round });

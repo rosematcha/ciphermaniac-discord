@@ -170,7 +170,7 @@ describe('plan', () => {
   it('shows a bye', () => {
     const r2 = round(2, [{ table: 0, seats: [seat('Tord Reklev', 'NO', 2, 0, { result: 'win' })], complete: true }, match(1, seat('Emma Hagen', 'NO', 1), seat('Z', 'DE', 1))]);
     const steps = plan(view(2, [r2]), squad, progress(1));
-    assert.match(text(steps, 'r2:pairings'), /\*\*Tord Reklev\*\* \(2-0-0\) has a bye/);
+    assert.match(text(steps, 'r2:pairings'), /\*\*Tord Reklev\*\* \(1-0-0\) has a bye/);
   });
 
   it('shows two followed players at one table once', () => {
@@ -197,5 +197,23 @@ describe('isFinished', () => {
     assert.equal(isFinished(index(17, { finished: true }), progress(17)), true);
     assert.equal(isFinished(index(17, { finished: true }), progress(16)), false);
     assert.equal(isFinished(index(17), progress(17)), false);
+  });
+});
+
+describe('plan with RK9 gaps', () => {
+  it('shows the record a player sat down with, even once their result is in', () => {
+    const r8 = round(8, [
+      match(3, seat('Tord Reklev', 'NO', 7), seat('A', 'IT', 7), 'a'),
+      match(9, seat('Emma Hagen', 'NO', 5, 2), seat('B', 'IT', 5, 2))
+    ]);
+    assert.match(text(plan(view(8, [r8]), squad, progress(7)), 'r8:pairings'), /\*\*Tord Reklev\*\* \(7-0-0\)/);
+  });
+
+  it('reports a past round RK9 never finished rather than stalling on it', () => {
+    const r8 = round(8, [match(3, seat('Tord Reklev', 'NO', 7), seat('A', 'IT', 7))]);
+    const r9 = round(9, [match(1, seat('Tord Reklev', 'NO', 8), seat('B', 'IT', 8))]);
+    const steps = plan(view(9, [r8, r9]), squad, progress(7));
+    assert.deepEqual(sent(steps), ['r8:results', 'advance 8', 'r9:pairings']);
+    assert.match(text(steps, 'r8:results'), /\*\*Tord Reklev\*\* played A, no result posted · 7-0-0/);
   });
 });

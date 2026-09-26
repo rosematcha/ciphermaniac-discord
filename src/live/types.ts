@@ -35,7 +35,7 @@ export interface LiveEvent {
   lastDay: string;
 }
 
-export interface LiveCut {
+interface LiveCut {
   from: number;
   size: number;
 }

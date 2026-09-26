@@ -37,6 +37,17 @@ function record(seat: LiveSeat): string {
   return `${seat.wins}-${seat.losses}-${seat.ties}`;
 }
 
+/** The record a player sat down with: RK9 counts a result into the record as soon as it is in. */
+function enteringRecord(seat: LiveSeat): string {
+  const { result } = seat;
+  return record({
+    ...seat,
+    wins: seat.wins - (result === 'win' ? 1 : 0),
+    losses: seat.losses - (result === 'loss' ? 1 : 0),
+    ties: seat.ties - (result === 'tie' ? 1 : 0)
+  });
+}
+
 function roundLabel(round: LiveRound): string {
   if (!round.topCut) {
     return `Round ${round.round}`;
@@ -82,7 +93,7 @@ function payload(context: RenderContext, title: string, lines: readonly string[]
 
 function followedText(entry: FollowedSeat, withRecord: boolean): string {
   const name = `**${escape(entry.seat.name)}**`;
-  return withRecord ? `${name} (${record(entry.seat)})` : name;
+  return withRecord ? `${name} (${enteringRecord(entry.seat)})` : name;
 }
 
 function pairingLine(entry: FollowedSeat, followed: ReadonlySet<LiveSeat>, context: RenderContext): string {
@@ -120,8 +131,8 @@ function resultPhrase(entry: FollowedSeat, context: RenderContext): string {
   if (!opponent) {
     return seat.result === 'win' ? 'had a bye' : 'took an unpaired loss';
   }
-  const verb = seat.result ? VERBS[seat.result] : 'played';
-  return `${verb} ${opponentText(opponent, context.decks)}`;
+  const against = opponentText(opponent, context.decks);
+  return seat.result ? `${VERBS[seat.result]} ${against}` : `played ${against}, no result posted`;
 }
 
 function resultLine(entry: FollowedSeat, context: RenderContext): string {
@@ -150,6 +161,6 @@ export function renderMilestone(
   context: RenderContext
 ): MessagePayload {
   const title = milestone.kind === 'day2' ? 'Day 2' : `Top ${milestone.size}`;
-  const lines = entries.map(entry => `**${escape(entry.seat.name)}** advanced at ${record(entry.seat)}`);
+  const lines = entries.map(entry => `**${escape(entry.seat.name)}** advanced at ${enteringRecord(entry.seat)}`);
   return payload(context, title, lines);
 }

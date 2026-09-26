@@ -1,0 +1,7 @@
+.git
+.github
+.scratch
+node_modules
+data
+.env
+deploy

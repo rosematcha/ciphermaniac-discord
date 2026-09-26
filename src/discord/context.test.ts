@@ -18,6 +18,12 @@ describe('listFollows', () => {
   });
 });
 
+describe('followLabel via listFollows', () => {
+  it('shows a preferred name first, with the published name beside it', () => {
+    assert.equal(listFollows([{ ...follow('Jordan Vale', 'US'), preferredName: 'Jay' }, follow('Dusk Dusk')], ', '), 'Jay (Jordan Vale, US), Dusk Dusk');
+  });
+});
+
 describe('canManage', () => {
   const context = { ownerId: 'owner' } as Context;
   const asker = (id: string, manages: boolean) => ({ user: { id }, memberPermissions: { has: () => manages } });

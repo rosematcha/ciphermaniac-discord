@@ -41,10 +41,12 @@ interface FollowRow {
   name_key: string;
   name: string;
   country: string;
+  preferred_name: string | null;
 }
 
 function toFollow(row: FollowRow): Follow {
-  return { nameKey: row.name_key, name: row.name, country: row.country };
+  const follow: Follow = { nameKey: row.name_key, name: row.name, country: row.country };
+  return row.preferred_name ? { ...follow, preferredName: row.preferred_name } : follow;
 }
 
 export class Store {
@@ -54,6 +56,15 @@ export class Store {
     this.#db = new DatabaseSync(path);
     this.#db.exec('PRAGMA journal_mode = WAL;');
     this.#db.exec(SCHEMA);
+    this.#migrate();
+  }
+
+  /** Columns added after the first release, for databases created before them. */
+  #migrate(): void {
+    const columns = this.#db.prepare('PRAGMA table_info(follows)').all() as unknown as { name: string }[];
+    if (!columns.some(column => column.name === 'preferred_name')) {
+      this.#db.exec('ALTER TABLE follows ADD COLUMN preferred_name TEXT');
+    }
   }
 
   close(): void {
@@ -90,6 +101,15 @@ export class Store {
       )
       .run(guildId, follow.nameKey, follow.name, follow.country);
     return result.changes > 0;
+  }
+
+  /** Sets what this server calls a followed player, or clears it with null; false if they are not followed. */
+  setPreferredName(guildId: string, nameKey: string, preferredName: string | null): boolean {
+    return (
+      this.#db
+        .prepare('UPDATE follows SET preferred_name = ? WHERE guild_id = ? AND name_key = ?')
+        .run(preferredName, guildId, nameKey).changes > 0
+    );
   }
 
   unfollow(guildId: string, nameKey: string): boolean {

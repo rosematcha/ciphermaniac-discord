@@ -246,3 +246,30 @@ describe('plan with seat aliases', () => {
     assert.match(asOpponent, /^\[playing\] Tord Reklev · 2-0-0 \| Table 8 vs Caitlin White \(Gardevoir\)$/m);
   });
 });
+
+describe('plan with preferred names', () => {
+  const r2 = round(2, [
+    match(3, seat('Jordan Vale', 'US', 1), seat('Tord Reklev', 'NO', 1)),
+    match(9, seat('Emma Hagen', 'NO', 1), seat('Cali White', 'CA', 1))
+  ]);
+
+  it("uses the server's name for a player, as a follow and as someone's opponent", () => {
+    const follows = [{ ...follow('Jordan Vale', 'US'), preferredName: 'Jay' }, follow('Tord Reklev', 'NO')];
+    const body = text(plan(view(2, [r2]), follows, progress(1)), 'r2:pairings');
+    assert.match(body, /^\[playing\] Jay · 1-0-0 \| Table 3 vs Tord Reklev$/m);
+    assert.match(body, /^\[playing\] Tord Reklev · 1-0-0 \| Table 3 vs Jay$/m);
+    assert.doesNotMatch(body, /Jordan/);
+  });
+
+  it('keeps it to that server: another server following the same player sees the published name', () => {
+    const body = text(plan(view(2, [r2]), [follow('Jordan Vale', 'US')], progress(1)), 'r2:pairings');
+    assert.match(body, /^\[playing\] Jordan Vale · 1-0-0 \| Table 3 vs Tord Reklev$/m);
+  });
+
+  it("puts a server's name ahead of the published alias", () => {
+    const follows = [{ ...follow('Caitlin White', 'CA'), preferredName: 'Cai' }, follow('Emma Hagen', 'NO')];
+    const body = text(plan(view(2, [r2]), follows, progress(1)), 'r2:pairings');
+    assert.match(body, /^\[playing\] Cai · 1-0-0 \| Table 9 vs Emma Hagen$/m);
+    assert.match(body, /^\[playing\] Emma Hagen · 1-0-0 \| Table 9 vs Cai$/m);
+  });
+});

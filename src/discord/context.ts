@@ -32,7 +32,9 @@ export const NOT_ALLOWED = {
 export const MAX_FOLLOWS = 100;
 
 export function followLabel(follow: Follow): string {
-  return follow.country ? `${follow.name} (${follow.country})` : follow.name;
+  const detail = [follow.preferredName ? follow.name : '', follow.country].filter(Boolean).join(', ');
+  const name = follow.preferredName ?? follow.name;
+  return detail ? `${name} (${detail})` : name;
 }
 
 /** Under Discord's 2000-character message limit, with room for the text around the list. */

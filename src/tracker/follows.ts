@@ -1,4 +1,4 @@
-import { seatNameKeys } from '../live/aliases.ts';
+import { displayName, seatNameKeys } from '../live/aliases.ts';
 import { foldName } from '../live/fold.ts';
 import type { LiveMatch, LiveRound, LiveSeat } from '../live/types.ts';
 
@@ -9,6 +9,8 @@ export interface Follow {
   name: string;
   /** `''` when the country is unknown. */
   country: string;
+  /** What this server calls the player, if not their published name. Never leaves the server. */
+  preferredName?: string;
 }
 
 export interface FollowedSeat {
@@ -16,6 +18,8 @@ export interface FollowedSeat {
   seat: LiveSeat;
   /** Absent for a bye or an unpaired loss. */
   opponent?: LiveSeat;
+  /** The name to show: the server's preferred name, else the one the player goes by. */
+  label: string;
 }
 
 function seatsByName(round: LiveRound): Map<string, { match: LiveMatch; seat: LiveSeat }[]> {
@@ -51,7 +55,8 @@ export function findFollowed(round: LiveRound, follows: readonly Follow[]): Foll
     const hit = pickSeat(candidates, follow);
     if (hit) {
       const opponent = hit.match.seats.find(seat => seat !== hit.seat);
-      found.push({ match: hit.match, seat: hit.seat, ...(opponent ? { opponent } : {}) });
+      const label = follow.preferredName ?? displayName(hit.seat);
+      found.push({ match: hit.match, seat: hit.seat, label, ...(opponent ? { opponent } : {}) });
     }
   }
   return found.sort((a, b) => a.match.table - b.match.table);

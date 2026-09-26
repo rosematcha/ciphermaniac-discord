@@ -88,7 +88,13 @@ function planRound(view: EventView, round: LiveRound, follows: readonly Follow[]
   if (entries.length === 0) {
     return isCurrent ? { steps: [], done: false } : { steps: [{ kind: 'advance', round: round.round }], done: true };
   }
-  const context: RenderContext = { slug: view.slug, eventName: view.index.name, round, decks: view.decks };
+  const context: RenderContext = {
+    slug: view.slug,
+    eventName: view.index.name,
+    round,
+    decks: view.decks,
+    labels: new Map(entries.map(entry => [entry.seat, entry.label]))
+  };
   const steps = milestoneSteps(view, round, entries, context, progress);
   // Only the current round waits for results, its pairings kept current meanwhile. A past round is
   // reported with what it has: RK9 sometimes never fills in a round's last results.

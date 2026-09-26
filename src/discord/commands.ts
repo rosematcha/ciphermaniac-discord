@@ -12,6 +12,7 @@ import { canManage, type Context, followLabel, listFollows, MAX_FOLLOWS, NOT_ALL
 import { startSetup } from './onboarding.ts';
 
 const CHOICE_MAX = 100;
+const PREFERRED_MAX = 60;
 
 export const commandData = [
   new SlashCommandBuilder()
@@ -32,6 +33,14 @@ export const commandData = [
     .addStringOption(option =>
       option.setName('player').setDescription('Player name').setRequired(true).setAutocomplete(true).setMaxLength(CHOICE_MAX)
     ),
+  new SlashCommandBuilder()
+    .setName('preferred-name')
+    .setDescription('Set what this server calls a followed player; leave the name out to clear it')
+    .setContexts(InteractionContextType.Guild)
+    .addStringOption(option =>
+      option.setName('player').setDescription('Followed player').setRequired(true).setAutocomplete(true).setMaxLength(CHOICE_MAX)
+    )
+    .addStringOption(option => option.setName('name').setDescription('Name to use').setMaxLength(PREFERRED_MAX)),
   new SlashCommandBuilder()
     .setName('following')
     .setDescription('List the players this server follows')
@@ -80,15 +89,37 @@ async function unfollow(interaction: ChatInputCommandInteraction<'cached'>, cont
     await interaction.reply(NOT_ALLOWED);
     return;
   }
+  const target = await followedTarget(interaction, context);
+  if (target) {
+    context.store.unfollow(interaction.guildId, target.nameKey);
+    await interaction.reply(ephemeral(`Stopped following ${followLabel(target)}.`));
+  }
+}
+
+/** The followed player a `player` option names, or null after saying the server doesn't follow them. */
+async function followedTarget(interaction: ChatInputCommandInteraction<'cached'>, context: Context): Promise<Follow | null> {
   const value = interaction.options.getString('player', true);
   const follows = context.store.follows(interaction.guildId);
   const target = follows.find(f => f.nameKey === value) ?? follows.find(f => f.nameKey === context.directory.resolve(value).nameKey);
   if (!target) {
     await interaction.reply(ephemeral(`This server doesn't follow ${value}.`));
+  }
+  return target ?? null;
+}
+
+async function preferredName(interaction: ChatInputCommandInteraction<'cached'>, context: Context): Promise<void> {
+  if (!canManage(interaction, context)) {
+    await interaction.reply(NOT_ALLOWED);
     return;
   }
-  context.store.unfollow(interaction.guildId, target.nameKey);
-  await interaction.reply(ephemeral(`Stopped following ${followLabel(target)}.`));
+  const target = await followedTarget(interaction, context);
+  if (!target) {
+    return;
+  }
+  const name = interaction.options.getString('name')?.trim().replace(/\s+/g, ' ') ?? '';
+  context.store.setPreferredName(interaction.guildId, target.nameKey, name || null);
+  const reply = name ? `This server will call ${target.name} ${name}.` : `This server will call ${target.name} by their published name.`;
+  await interaction.reply(ephemeral(reply));
 }
 
 async function following(interaction: ChatInputCommandInteraction<'cached'>, context: Context): Promise<void> {
@@ -103,6 +134,7 @@ const handlers: Record<string, (interaction: ChatInputCommandInteraction<'cached
   setup: startSetup,
   follow,
   unfollow,
+  'preferred-name': preferredName,
   following
 };
 
@@ -112,7 +144,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction<'ca
 
 export async function handleAutocomplete(interaction: AutocompleteInteraction<'cached'>, context: Context): Promise<void> {
   const query = interaction.options.getFocused();
-  if (interaction.commandName === 'unfollow') {
+  if (interaction.commandName === 'unfollow' || interaction.commandName === 'preferred-name') {
     const folded = foldName(query);
     const follows = context.store.follows(interaction.guildId).filter(f => f.nameKey.includes(folded));
     await interaction.respond(follows.slice(0, 25).map(f => choice(followLabel(f), f.nameKey)));

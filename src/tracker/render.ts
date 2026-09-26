@@ -35,6 +35,12 @@ export interface RenderContext {
   eventName: string;
   round: LiveRound;
   decks: Readonly<Record<string, string>>;
+  /** Names for the server's followed seats, which may be preferred names; anyone else goes by `displayName`. */
+  labels: ReadonlyMap<LiveSeat, string>;
+}
+
+function nameOf(seat: LiveSeat, context: RenderContext): string {
+  return escape(context.labels.get(seat) ?? displayName(seat));
 }
 
 function escape(text: string): string {
@@ -70,15 +76,15 @@ function roundLabel(round: LiveRound): string {
 }
 
 /** An opponent, with the deck ciphermaniac shows for them if it knows one. */
-function opponentText(seat: LiveSeat, decks: RenderContext['decks']): string {
-  const deck = decks[seatKey(seat)];
-  const name = escape(displayName(seat));
+function opponentText(seat: LiveSeat, context: RenderContext): string {
+  const deck = context.decks[seatKey(seat)];
+  const name = nameOf(seat, context);
   return deck ? `${name} (${escape(deck)})` : name;
 }
 
 /** A player's name, with a record unless the round is top cut, where records are frozen. */
 function playerTitle(seat: LiveSeat, context: RenderContext, shown: string): string {
-  const name = escape(displayName(seat));
+  const name = nameOf(seat, context);
   return context.round.topCut ? name : `${name} · ${shown}`;
 }
 
@@ -107,7 +113,7 @@ function pairingText(entry: FollowedSeat, context: RenderContext): string {
     return seat.result === 'win' ? 'Bye' : 'Unpaired';
   }
   const table = entry.match.table > 0 ? `Table ${entry.match.table} vs ` : 'vs ';
-  return `${table}${opponentText(opponent, context.decks)}`;
+  return `${table}${opponentText(opponent, context)}`;
 }
 
 export function renderPairings(entries: readonly FollowedSeat[], context: RenderContext): MessagePayload[] {
@@ -126,7 +132,7 @@ function resultText(entry: FollowedSeat, context: RenderContext): string {
   if (!opponent) {
     return seat.result === 'win' ? 'Bye' : 'Unpaired loss';
   }
-  const against = opponentText(opponent, context.decks);
+  const against = opponentText(opponent, context);
   return seat.result ? `${WORDS[seat.result]} vs ${against}` : `No result posted vs ${against}`;
 }
 
@@ -147,7 +153,7 @@ export function renderMilestone(
 ): MessagePayload[] {
   const title = milestone.kind === 'day2' ? 'Day 2' : `Top ${milestone.size}`;
   const embeds = entries.map(entry => ({
-    title: `${escape(displayName(entry.seat))} · ${enteringRecord(entry.seat)}`,
+    title: `${nameOf(entry.seat, context)} · ${enteringRecord(entry.seat)}`,
     description: title,
     color: COLORS.win
   }));

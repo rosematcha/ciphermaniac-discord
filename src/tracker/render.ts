@@ -4,6 +4,7 @@
  * ten embeds a message, so a long list of players runs over several messages.
  */
 
+import { displayName } from '../live/aliases.ts';
 import { seatKey } from '../live/fold.ts';
 import { eventUrl } from '../live/source.ts';
 import type { LiveResult, LiveRound, LiveSeat } from '../live/types.ts';
@@ -71,12 +72,14 @@ function roundLabel(round: LiveRound): string {
 /** An opponent, with the deck ciphermaniac shows for them if it knows one. */
 function opponentText(seat: LiveSeat, decks: RenderContext['decks']): string {
   const deck = decks[seatKey(seat)];
-  return deck ? `${escape(seat.name)} (${escape(deck)})` : escape(seat.name);
+  const name = escape(displayName(seat));
+  return deck ? `${name} (${escape(deck)})` : name;
 }
 
 /** A player's name, with a record unless the round is top cut, where records are frozen. */
 function playerTitle(seat: LiveSeat, context: RenderContext, shown: string): string {
-  return context.round.topCut ? escape(seat.name) : `${escape(seat.name)} · ${shown}`;
+  const name = escape(displayName(seat));
+  return context.round.topCut ? name : `${name} · ${shown}`;
 }
 
 /** The header on the first message and the embeds, split into as many messages as Discord needs. */
@@ -144,7 +147,7 @@ export function renderMilestone(
 ): MessagePayload[] {
   const title = milestone.kind === 'day2' ? 'Day 2' : `Top ${milestone.size}`;
   const embeds = entries.map(entry => ({
-    title: `${escape(entry.seat.name)} · ${enteringRecord(entry.seat)}`,
+    title: `${escape(displayName(entry.seat))} · ${enteringRecord(entry.seat)}`,
     description: title,
     color: COLORS.win
   }));

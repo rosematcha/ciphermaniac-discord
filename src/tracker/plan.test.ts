@@ -233,3 +233,16 @@ describe('plan with RK9 gaps', () => {
     assert.match(text(steps, 'r8:results'), /^\[grey\] Tord Reklev · 7-0-0 \| No result posted vs A$/m);
   });
 });
+
+describe('plan with seat aliases', () => {
+  it('shows the name a player goes by, and keeps deck reports on the registered name', () => {
+    const decks = { 'cali white|CA': 'Gardevoir' };
+    const followed = round(3, [match(7, seat('Cali White', 'CA', 2), seat('Ann Lee', 'US', 2))]);
+    const asPlayer = text(plan(view(3, [followed], { decks }), [follow('Caitlin White', 'CA')], progress(2)), 'r3:pairings');
+    assert.match(asPlayer, /^\[playing\] Caitlin White · 2-0-0 \| Table 7 vs Ann Lee$/m);
+
+    const opposing = round(3, [match(8, seat('Tord Reklev', 'NO', 2), seat('Cali White', 'CA', 2))]);
+    const asOpponent = text(plan(view(3, [opposing], { decks }), [follow('Tord Reklev', 'NO')], progress(2)), 'r3:pairings');
+    assert.match(asOpponent, /^\[playing\] Tord Reklev · 2-0-0 \| Table 8 vs Caitlin White \(Gardevoir\)$/m);
+  });
+});

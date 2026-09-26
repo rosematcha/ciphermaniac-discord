@@ -1,3 +1,4 @@
+import { seatNameKeys } from '../live/aliases.ts';
 import { foldName } from '../live/fold.ts';
 import type { LiveMatch, LiveRound, LiveSeat } from '../live/types.ts';
 
@@ -46,7 +47,8 @@ export function findFollowed(round: LiveRound, follows: readonly Follow[]): Foll
   const byName = seatsByName(round);
   const found: FollowedSeat[] = [];
   for (const follow of follows) {
-    const hit = pickSeat(byName.get(follow.nameKey) ?? [], follow);
+    const candidates = seatNameKeys(follow.nameKey).flatMap(nameKey => byName.get(nameKey) ?? []);
+    const hit = pickSeat(candidates, follow);
     if (hit) {
       const opponent = hit.match.seats.find(seat => seat !== hit.seat);
       found.push({ match: hit.match, seat: hit.seat, ...(opponent ? { opponent } : {}) });

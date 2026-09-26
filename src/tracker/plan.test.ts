@@ -254,10 +254,10 @@ describe('plan with preferred names', () => {
   ]);
 
   it("uses the server's name for a player, as a follow and as someone's opponent", () => {
-    const follows = [{ ...follow('Jordan Vale', 'US'), preferredName: 'Jay' }, follow('Tord Reklev', 'NO')];
+    const follows = [{ ...follow('Jordan Vale', 'US'), preferredName: 'Jay Vale' }, follow('Tord Reklev', 'NO')];
     const body = text(plan(view(2, [r2]), follows, progress(1)), 'r2:pairings');
-    assert.match(body, /^\[playing\] Jay · 1-0-0 \| Table 3 vs Tord Reklev$/m);
-    assert.match(body, /^\[playing\] Tord Reklev · 1-0-0 \| Table 3 vs Jay$/m);
+    assert.match(body, /^\[playing\] Jay Vale · 1-0-0 \| Table 3 vs Tord Reklev$/m);
+    assert.match(body, /^\[playing\] Tord Reklev · 1-0-0 \| Table 3 vs Jay Vale$/m);
     assert.doesNotMatch(body, /Jordan/);
   });
 

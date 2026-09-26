@@ -80,8 +80,10 @@ async function follow(interaction: ChatInputCommandInteraction<'cached'>, contex
   }
   const player = parseChoice(interaction.options.getString('player', true), context);
   store.follow(interaction.guildId, player);
+  // Read back, so a follow that already had a preferred name is confirmed under it.
+  const stored = store.follows(interaction.guildId).find(f => f.nameKey === player.nameKey) ?? player;
   const hint = store.channelFor(interaction.guildId) ? '' : ' Run /setup to choose where updates go.';
-  await interaction.reply(ephemeral(`Following ${followLabel(player)}.${hint}`));
+  await interaction.reply(ephemeral(`Following ${followLabel(stored)}.${hint}`));
 }
 
 async function unfollow(interaction: ChatInputCommandInteraction<'cached'>, context: Context): Promise<void> {
@@ -118,7 +120,8 @@ async function preferredName(interaction: ChatInputCommandInteraction<'cached'>,
   }
   const name = interaction.options.getString('name')?.trim().replace(/\s+/g, ' ') ?? '';
   context.store.setPreferredName(interaction.guildId, target.nameKey, name || null);
-  const reply = name ? `This server will call ${target.name} ${name}.` : `This server will call ${target.name} by their published name.`;
+  // Only ever the name being set: the published one may be a name the player no longer uses.
+  const reply = name ? `Updates in this server will now say ${name}.` : `Updates in this server will now use ${target.name}.`;
   await interaction.reply(ephemeral(reply));
 }
 
@@ -142,13 +145,25 @@ export async function handleCommand(interaction: ChatInputCommandInteraction<'ca
   await handlers[interaction.commandName]?.(interaction, context);
 }
 
+/** The server's follows, matched on the name it shows as well as the published one. */
+function followChoices(query: string, follows: readonly Follow[]): { name: string; value: string }[] {
+  const folded = foldName(query);
+  return follows
+    .filter(f => f.nameKey.includes(folded) || foldName(f.preferredName ?? '').includes(folded))
+    .slice(0, 25)
+    .map(f => choice(followLabel(f), f.nameKey));
+}
+
+/** Suggestions from the player index, shown under this server's preferred name for anyone it already follows. */
+function playerChoices(query: string, follows: readonly Follow[], context: Context): { name: string; value: string }[] {
+  const followed = new Map(follows.map(f => [f.nameKey, f]));
+  return context.directory.search(query).map(f => choice(followLabel(followed.get(f.nameKey) ?? f), choiceValue(f)));
+}
+
 export async function handleAutocomplete(interaction: AutocompleteInteraction<'cached'>, context: Context): Promise<void> {
   const query = interaction.options.getFocused();
-  if (interaction.commandName === 'unfollow' || interaction.commandName === 'preferred-name') {
-    const folded = foldName(query);
-    const follows = context.store.follows(interaction.guildId).filter(f => f.nameKey.includes(folded));
-    await interaction.respond(follows.slice(0, 25).map(f => choice(followLabel(f), f.nameKey)));
-    return;
-  }
-  await interaction.respond(context.directory.search(query).map(f => choice(followLabel(f), choiceValue(f))));
+  const follows = context.store.follows(interaction.guildId);
+  const choices =
+    interaction.commandName === 'follow' ? playerChoices(query, follows, context) : followChoices(query, follows);
+  await interaction.respond(choices);
 }

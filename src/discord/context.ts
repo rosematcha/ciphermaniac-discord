@@ -31,10 +31,14 @@ export const NOT_ALLOWED = {
 /** Most follows a server can have, so a round's message stays inside Discord's limits. */
 export const MAX_FOLLOWS = 100;
 
+/**
+ * How a follow is shown anywhere in its server. A preferred name replaces the
+ * published one outright: the published name may be one the player no longer
+ * uses, so it is never shown beside it.
+ */
 export function followLabel(follow: Follow): string {
-  const detail = [follow.preferredName ? follow.name : '', follow.country].filter(Boolean).join(', ');
   const name = follow.preferredName ?? follow.name;
-  return detail ? `${name} (${detail})` : name;
+  return follow.country ? `${name} (${follow.country})` : name;
 }
 
 /** Under Discord's 2000-character message limit, with room for the text around the list. */

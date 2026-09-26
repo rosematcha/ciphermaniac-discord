@@ -15,6 +15,7 @@ import { Runner } from './tracker/runner.ts';
 
 const TICK_MS = 60_000;
 const DIRECTORY_MS = 12 * 3_600_000;
+const SHUTDOWN_GRACE_MS = 8_000;
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -49,6 +50,7 @@ const directory = new Directory();
 const context: Context = { store, directory, ownerId: process.env.OWNER_ID ?? '' };
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const stop = new AbortController();
+const loops: Promise<void>[] = [];
 
 client.once(Events.ClientReady, ready => {
   console.log(`logged in as ${ready.user.tag} in ${ready.guilds.cache.size} servers`);
@@ -61,8 +63,7 @@ client.once(Events.ClientReady, ready => {
     store,
     directory
   });
-  void every(DIRECTORY_MS, () => loadDirectory(directory), stop.signal);
-  void every(TICK_MS, () => runner.tick(), stop.signal);
+  loops.push(every(DIRECTORY_MS, () => loadDirectory(directory), stop.signal), every(TICK_MS, () => runner.tick(), stop.signal));
 });
 
 client.on(Events.GuildCreate, guild => {
@@ -82,14 +83,20 @@ client.on(Events.InteractionCreate, interaction => {
   void handleInteraction(interaction, context);
 });
 
+/**
+ * Lets a tick in flight finish before closing, so a message it has just posted gets its progress saved
+ * rather than posted again after the restart. Docker allows ten seconds before it kills the process.
+ */
+async function shutdown(): Promise<void> {
+  stop.abort();
+  await Promise.race([Promise.all(loops), sleep(SHUTDOWN_GRACE_MS)]);
+  await client.destroy();
+  store.close();
+  process.exit(0);
+}
+
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.once(signal, () => {
-    stop.abort();
-    void client.destroy().finally(() => {
-      store.close();
-      process.exit(0);
-    });
-  });
+  process.once(signal, () => void shutdown());
 }
 
 await client.login(requireEnv('DISCORD_TOKEN'));

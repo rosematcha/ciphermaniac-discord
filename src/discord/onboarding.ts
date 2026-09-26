@@ -25,7 +25,7 @@ import {
   TextInputStyle
 } from 'discord.js';
 
-import { canManage, type Context, followLabel, MAX_FOLLOWS, NOT_ALLOWED } from './context.ts';
+import { canManage, type Context, listFollows, MAX_FOLLOWS, NOT_ALLOWED } from './context.ts';
 
 const SETUP_IDS = {
   start: 'setup:start',
@@ -61,7 +61,7 @@ function channelStep(context: Context, guildId: string, problem = '') {
 function playersStep(context: Context, guildId: string) {
   const follows = context.store.follows(guildId);
   const channelId = context.store.channelFor(guildId);
-  const list = follows.length > 0 ? `Following: ${follows.map(followLabel).join(', ')}` : 'Not following anyone yet.';
+  const list = follows.length > 0 ? `Following: ${listFollows(follows, ', ')}` : 'Not following anyone yet.';
   const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(SETUP_IDS.add)

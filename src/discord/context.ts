@@ -19,7 +19,8 @@ interface Asker {
 
 /** Whether the user may change a server's channel and follows: Manage Server, or the bot's owner. */
 export function canManage(interaction: Asker, context: Context): boolean {
-  return interaction.user.id === context.ownerId || (interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false);
+  const isOwner = context.ownerId !== '' && interaction.user.id === context.ownerId;
+  return isOwner || (interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false);
 }
 
 export const NOT_ALLOWED = {
@@ -32,4 +33,20 @@ export const MAX_FOLLOWS = 100;
 
 export function followLabel(follow: Follow): string {
   return follow.country ? `${follow.name} (${follow.country})` : follow.name;
+}
+
+/** Under Discord's 2000-character message limit, with room for the text around the list. */
+const LIST_MAX = 1500;
+
+/** The follows as one string, cut short with a count of the rest if it would not fit in a message. */
+export function listFollows(follows: readonly Follow[], separator: string, max = LIST_MAX): string {
+  let list = '';
+  for (const [i, follow] of follows.entries()) {
+    const next = list ? `${list}${separator}${followLabel(follow)}` : followLabel(follow);
+    if (next.length > max) {
+      return `${list}${separator}and ${follows.length - i} more`;
+    }
+    list = next;
+  }
+  return list;
 }

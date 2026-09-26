@@ -8,7 +8,7 @@ import {
 
 import { foldName } from '../live/fold.ts';
 import type { Follow } from '../tracker/follows.ts';
-import { canManage, type Context, followLabel, MAX_FOLLOWS, NOT_ALLOWED } from './context.ts';
+import { canManage, type Context, followLabel, listFollows, MAX_FOLLOWS, NOT_ALLOWED } from './context.ts';
 import { startSetup } from './onboarding.ts';
 
 const CHOICE_MAX = 100;
@@ -95,7 +95,7 @@ async function following(interaction: ChatInputCommandInteraction<'cached'>, con
   const follows = context.store.follows(interaction.guildId);
   const channelId = context.store.channelFor(interaction.guildId);
   const where = channelId ? `Updates go to <#${channelId}>.` : 'No updates channel yet: run /setup.';
-  const list = follows.length > 0 ? follows.map(followLabel).join('\n') : 'Not following anyone yet.';
+  const list = follows.length > 0 ? listFollows(follows, '\n') : 'Not following anyone yet.';
   await interaction.reply(ephemeral(`${where}\n\n${list}`));
 }
 

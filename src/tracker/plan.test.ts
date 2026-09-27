@@ -71,10 +71,10 @@ describe('plan', () => {
     assert.deepEqual(sent(plan(view(4, [partial]), squad, progress(3, ['r4:pairings']))), ['r4:pairings']);
 
     const steps = plan(view(4, [frankfurtRound4(true)]), squad, progress(3, ['r4:pairings']));
-    assert.deepEqual(sent(steps), ['r4:results', 'advance 4']);
-    assert.match(text(steps, 'r4:results'), /^\*\*Frankfurt · Round 4 results\*\*$/m);
-    assert.match(text(steps, 'r4:results'), /^\[win\] Tord Reklev · 4-0-0 \| Won vs Ahmed Nasser$/m);
-    assert.match(text(steps, 'r4:results'), /^\[loss\] Natalie Millar · 0-4-0 \| Lost vs Jan Novak$/m);
+    assert.deepEqual(sent(steps), ['r4:pairings', 'advance 4']);
+    assert.match(text(steps, 'r4:pairings'), /^\*\*Frankfurt · Round 4 results\*\*$/m);
+    assert.match(text(steps, 'r4:pairings'), /^\[win\] Tord Reklev · 4-0-0 \| Won vs Ahmed Nasser$/m);
+    assert.match(text(steps, 'r4:pairings'), /^\[loss\] Natalie Millar · 0-4-0 \| Lost vs Jan Novak$/m);
   });
 
   it('marks a drop, then stops waiting on the dropped player', () => {
@@ -82,7 +82,7 @@ describe('plan', () => {
     const natalie = r4.matches[2];
     assert.ok(natalie?.seats[0]);
     natalie.seats[0].dropped = true;
-    assert.match(text(plan(view(4, [r4]), squad, progress(3)), 'r4:results'), /^\[loss\] Natalie Millar · 0-4-0 \| Lost vs Jan Novak · dropped$/m);
+    assert.match(text(plan(view(4, [r4]), squad, progress(3)), 'r4:pairings'), /^\[loss\] Natalie Millar · 0-4-0 \| Lost vs Jan Novak · dropped$/m);
 
     // Round 5 is paired without her; the other three finishing is enough.
     const r5 = round(5, [
@@ -91,8 +91,8 @@ describe('plan', () => {
       match(60, seat('Emma Hagen', 'NO', 3, 1), seat('Tom Weiss', 'CH', 3, 1), 'b')
     ]);
     const steps = plan(view(5, [r4, r5]), squad, progress(4, ['r5:pairings']));
-    assert.deepEqual(sent(steps), ['r5:results', 'advance 5']);
-    assert.doesNotMatch(text(steps, 'r5:results'), /Natalie/);
+    assert.deepEqual(sent(steps), ['r5:pairings', 'advance 5']);
+    assert.doesNotMatch(text(steps, 'r5:pairings'), /Natalie/);
   });
 
   it('edits the pairings when an opponent deck comes in, and leaves them alone otherwise', () => {
@@ -145,10 +145,10 @@ describe('plan', () => {
     );
     const top4 = round(16, [match(1, seat('Tord Reklev', 'NO', 12, 2), seat('Adam Denk', 'CZ', 12, 1)), ...filler(1)], true);
     const steps = plan(view(16, [swiss, top8, top4]), squad, progress(14));
-    assert.deepEqual(sent(steps), ['r15:milestone', 'r15:results', 'advance 15', 'r16:pairings']);
+    assert.deepEqual(sent(steps), ['r15:milestone', 'r15:pairings', 'advance 15', 'r16:pairings']);
     assert.match(text(steps, 'r15:milestone'), /Top 8/);
-    assert.match(text(steps, 'r15:results'), /Top 8 results/);
-    assert.match(text(steps, 'r15:results'), /^\[loss\] Emma Hagen \| Lost vs Adam Denk$/m);
+    assert.match(text(steps, 'r15:pairings'), /Top 8 results/);
+    assert.match(text(steps, 'r15:pairings'), /^\[loss\] Emma Hagen \| Lost vs Adam Denk$/m);
     assert.match(text(steps, 'r16:pairings'), /^\*\*Frankfurt · Top 4\*\*/m);
     assert.match(text(steps, 'r16:pairings'), /^\[playing\] Tord Reklev \| Table 1 vs Adam Denk$/m);
     assert.doesNotMatch(text(steps, 'r16:pairings'), /Emma/);
@@ -159,9 +159,9 @@ describe('plan', () => {
     const r2 = round(2, [match(1, seat('Tord Reklev', 'NO', 1), seat('B', 'DE', 1), 'a')]);
     const r3 = round(3, [match(1, seat('Tord Reklev', 'NO', 2), seat('C', 'DE', 2))]);
     assert.deepEqual(sent(plan(view(3, [r1, r2, r3]), squad, progress(0))), [
-      'r1:results',
+      'r1:pairings',
       'advance 1',
-      'r2:results',
+      'r2:pairings',
       'advance 2',
       'r3:pairings'
     ]);
@@ -229,8 +229,8 @@ describe('plan with RK9 gaps', () => {
     const r8 = round(8, [match(3, seat('Tord Reklev', 'NO', 7), seat('A', 'IT', 7))]);
     const r9 = round(9, [match(1, seat('Tord Reklev', 'NO', 8), seat('B', 'IT', 8))]);
     const steps = plan(view(9, [r8, r9]), squad, progress(7));
-    assert.deepEqual(sent(steps), ['r8:results', 'advance 8', 'r9:pairings']);
-    assert.match(text(steps, 'r8:results'), /^\[grey\] Tord Reklev · 7-0-0 \| No result posted vs A$/m);
+    assert.deepEqual(sent(steps), ['r8:pairings', 'advance 8', 'r9:pairings']);
+    assert.match(text(steps, 'r8:pairings'), /^\[grey\] Tord Reklev · 7-0-0 \| No result posted vs A$/m);
   });
 });
 

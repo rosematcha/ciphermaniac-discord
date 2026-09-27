@@ -62,11 +62,13 @@ function recorder(): Sender & { posts: Posted[]; edits: string[]; gone: Set<stri
       posts.push({ channelId, id, ...summary(payload) });
       return Promise.resolve(id);
     },
-    edit: (_channelId, messageId) => {
-      if (gone.has(messageId)) {
+    edit: (_channelId, messageId, payload) => {
+      const post = posts.find(p => p.id === messageId);
+      if (gone.has(messageId) || !post) {
         return Promise.resolve(false);
       }
       edits.push(messageId);
+      Object.assign(post, summary(payload));
       return Promise.resolve(true);
     }
   };
@@ -109,12 +111,12 @@ describe('Runner', () => {
 
     publish('brisbane-2027', brisbane(true), 'done');
     await runner.tick(NOW);
-    assert.deepEqual(sender.posts.map(p => p.title).slice(2), ['Brisbane · Round 5 results']);
+    assert.deepEqual(sender.posts.map(p => p.title), ['Frankfurt · Round 3', 'Brisbane · Round 5 results']);
 
     publish('frankfurt-2027', frankfurt(true), 'done');
     await runner.tick(NOW);
-    assert.equal(sender.posts[3]?.title, 'Frankfurt · Round 3 results');
-    assert.equal(sender.posts.length, 4);
+    assert.deepEqual(sender.posts.map(p => p.title), ['Frankfurt · Round 3 results', 'Brisbane · Round 5 results']);
+    assert.deepEqual(sender.edits, ['m2', 'm1']);
     assert.ok(sender.posts.every(p => p.channelId === 'updates'));
   });
 

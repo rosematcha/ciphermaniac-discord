@@ -23,7 +23,7 @@ interface SentMessage {
 export interface Progress {
   /** The last round whose results the server has had, or has nothing to hear about. */
   resultsDone: number;
-  /** Keyed `r{round}:{pairings|results|milestone}`. */
+  /** Keyed `r{round}:{pairings|milestone}`; a round's results replace its pairings in the same message. */
   messages: Record<string, SentMessage>;
 }
 
@@ -102,7 +102,8 @@ function planRound(view: EventView, round: LiveRound, follows: readonly Follow[]
     steps.push(...sendIfChanged(`r${round.round}:pairings`, renderPairings(entries, context), progress));
     return { steps, done: false };
   }
-  steps.push(...send(`r${round.round}:results`, renderResults(entries, context)), { kind: 'advance', round: round.round });
+  // Under the pairings' key, so the results are an edit of the pairings message rather than a new one.
+  steps.push(...send(`r${round.round}:pairings`, renderResults(entries, context)), { kind: 'advance', round: round.round });
   return { steps, done: true };
 }
 

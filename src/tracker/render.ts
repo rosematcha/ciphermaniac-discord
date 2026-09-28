@@ -6,7 +6,6 @@
 
 import { displayName } from '../live/aliases.ts';
 import { seatKey } from '../live/fold.ts';
-import { eventUrl } from '../live/source.ts';
 import type { LiveResult, LiveRound, LiveSeat } from '../live/types.ts';
 import type { FollowedSeat } from './follows.ts';
 import type { Milestone } from './milestones.ts';
@@ -101,10 +100,8 @@ function messages(header: string, embeds: readonly Embed[]): MessagePayload[] {
   return payloads;
 }
 
-function header(context: RenderContext, title: string, link: boolean): string {
-  const bold = `**${escape(`${shortName(context.eventName)} · ${title}`)}**`;
-  // Angle brackets keep Discord from unfurling a preview of the page.
-  return link ? `${bold} · [live](<${eventUrl(context.slug)}>)` : bold;
+function header(context: RenderContext, title: string): string {
+  return `**${escape(`${shortName(context.eventName)} · ${title}`)}**`;
 }
 
 function pairingText(entry: FollowedSeat, context: RenderContext): string {
@@ -122,7 +119,7 @@ export function renderPairings(entries: readonly FollowedSeat[], context: Render
     description: pairingText(entry, context),
     color: ACCENT
   }));
-  return messages(header(context, roundLabel(context.round), true), embeds);
+  return messages(header(context, roundLabel(context.round)), embeds);
 }
 
 const WORDS = { win: 'Won', loss: 'Lost', tie: 'Tied' } as const;
@@ -142,7 +139,7 @@ export function renderResults(entries: readonly FollowedSeat[], context: RenderC
     description: entry.seat.dropped ? `${resultText(entry, context)} · dropped` : resultText(entry, context),
     color: COLORS[entry.seat.result ?? 'none']
   }));
-  return messages(header(context, `${roundLabel(context.round)} results`, false), embeds);
+  return messages(header(context, `${roundLabel(context.round)} results`), embeds);
 }
 
 /** Followed players who made Day 2 or the top cut, with the record that got them there. */
@@ -157,5 +154,5 @@ export function renderMilestone(
     description: title,
     color: COLORS.win
   }));
-  return messages(header(context, title, false), embeds);
+  return messages(header(context, title), embeds);
 }

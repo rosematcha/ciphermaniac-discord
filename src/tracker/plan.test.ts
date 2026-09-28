@@ -57,7 +57,7 @@ describe('plan', () => {
     const steps = plan(view(4, [frankfurtRound4(false)], { decks: { 'luca rossi|IT': "N's Zoroark" } }), squad, progress(3));
     assert.deepEqual(sent(steps), ['r4:pairings']);
     const body = text(steps, 'r4:pairings');
-    assert.match(body, /^\*\*Frankfurt · Round 4\*\* · \[live\]\(<https:\/\/ciphermaniac\.com\/live\/frankfurt-2027>\)$/m);
+    assert.match(body, /^\*\*Frankfurt · Round 4\*\*$/m);
     assert.match(body, /^\[playing\] Tord Reklev · 3-0-0 \| Table 12 vs Ahmed Nasser$/m);
     assert.match(body, /^\[playing\] Jasmine Dickinson · 2-1-0 \| Table 40 vs Luca Rossi \(N's Zoroark\)$/m);
     assert.doesNotMatch(body, /Reese/);

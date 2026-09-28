@@ -57,7 +57,3 @@ export function isEventLive(event: LiveEvent, now: Date): boolean {
   const last = Date.parse(`${event.lastDay}T00:00:00Z`);
   return now.getTime() >= first - 24 * HOUR && now.getTime() < last + 48 * HOUR;
 }
-
-export function eventUrl(slug: string): string {
-  return `https://ciphermaniac.com/live/${encodeURIComponent(slug)}`;
-}

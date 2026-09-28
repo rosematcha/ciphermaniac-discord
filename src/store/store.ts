@@ -28,6 +28,11 @@ const SCHEMA = `
     state TEXT NOT NULL,
     PRIMARY KEY (guild_id, slug)
   );
+  CREATE TABLE IF NOT EXISTS hushes (
+    guild_id TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    PRIMARY KEY (guild_id, slug)
+  );
 `;
 
 export interface Subscriber {
@@ -86,7 +91,7 @@ export class Store {
 
   /** Forgets a server entirely, for when the bot is removed from it. */
   removeGuild(guildId: string): void {
-    for (const table of ['guilds', 'follows', 'progress']) {
+    for (const table of ['guilds', 'follows', 'progress', 'hushes']) {
       this.#db.prepare(`DELETE FROM ${table} WHERE guild_id = ?`).run(guildId);
     }
   }
@@ -147,12 +152,33 @@ export class Store {
       .run(guildId, slug, JSON.stringify(progress));
   }
 
-  /** Drops progress for events no longer on the schedule. An empty schedule is taken as a bad read and prunes nothing. */
+  /**
+   * Silences an event in a server; false if it already was. Its progress goes too, so lifting the hush
+   * picks up at the current round rather than replaying the ones missed.
+   */
+  hush(guildId: string, slug: string): boolean {
+    this.#db.prepare('DELETE FROM progress WHERE guild_id = ? AND slug = ?').run(guildId, slug);
+    return this.#db.prepare('INSERT OR IGNORE INTO hushes (guild_id, slug) VALUES (?, ?)').run(guildId, slug).changes > 0;
+  }
+
+  unhush(guildId: string, slug: string): boolean {
+    return this.#db.prepare('DELETE FROM hushes WHERE guild_id = ? AND slug = ?').run(guildId, slug).changes > 0;
+  }
+
+  /** The events a server has hushed. */
+  hushed(guildId: string): Set<string> {
+    const rows = this.#db.prepare('SELECT slug FROM hushes WHERE guild_id = ?').all(guildId) as unknown as { slug: string }[];
+    return new Set(rows.map(row => row.slug));
+  }
+
+  /** Drops progress and hushes for events no longer on the schedule. An empty schedule is taken as a bad read and prunes nothing. */
   pruneProgress(scheduled: readonly string[]): void {
     if (scheduled.length === 0) {
       return;
     }
     const placeholders = scheduled.map(() => '?').join(', ');
-    this.#db.prepare(`DELETE FROM progress WHERE slug NOT IN (${placeholders})`).run(...scheduled);
+    for (const table of ['progress', 'hushes']) {
+      this.#db.prepare(`DELETE FROM ${table} WHERE slug NOT IN (${placeholders})`).run(...scheduled);
+    }
   }
 }

@@ -73,6 +73,11 @@ export class Runner {
     }
   }
 
+  /** The events live now, from the last schedule read. */
+  liveEvents(now = new Date()): LiveEvent[] {
+    return (this.#schedule?.events ?? []).filter(event => isEventLive(event, now));
+  }
+
   /**
    * The schedule, refreshed every few minutes. A failed or missing refresh keeps the last one: an empty
    * schedule would prune every server's progress and have it all posted again.
@@ -146,6 +151,9 @@ export class Runner {
   #tracked(slug: string, index: LiveIndex, subscribers: readonly Subscriber[]): Tracked[] {
     const tracked: Tracked[] = [];
     for (const subscriber of subscribers) {
+      if (this.#deps.store.hushed(subscriber.guildId).has(slug)) {
+        continue;
+      }
       let progress = this.#deps.store.progress(subscriber.guildId, slug);
       if (!progress) {
         progress = initialProgress(index);

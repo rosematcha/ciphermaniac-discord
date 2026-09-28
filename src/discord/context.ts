@@ -1,5 +1,6 @@
 import { MessageFlags, PermissionFlagsBits } from 'discord.js';
 
+import type { LiveEvent } from '../live/types.ts';
 import type { Directory } from '../players/directory.ts';
 import type { Store } from '../store/store.ts';
 import type { Follow } from '../tracker/follows.ts';
@@ -9,6 +10,8 @@ export interface Context {
   directory: Directory;
   /** A user who can manage the bot in any server, whatever their permissions there. */
   ownerId: string;
+  /** The events live now, for /hush. */
+  liveEvents: () => LiveEvent[];
 }
 
 /** Enough of an interaction to tell who is asking and where. */

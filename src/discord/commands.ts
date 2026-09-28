@@ -7,6 +7,7 @@ import {
 } from 'discord.js';
 
 import { foldName } from '../live/fold.ts';
+import type { LiveEvent } from '../live/types.ts';
 import type { Follow } from '../tracker/follows.ts';
 import { canManage, type Context, followLabel, listFollows, MAX_FOLLOWS, NOT_ALLOWED } from './context.ts';
 import { startSetup } from './onboarding.ts';
@@ -44,7 +45,21 @@ export const commandData = [
   new SlashCommandBuilder()
     .setName('following')
     .setDescription('List the players this server follows')
+    .setContexts(InteractionContextType.Guild),
+  new SlashCommandBuilder()
+    .setName('hush')
+    .setDescription("Stop updates from this weekend's events; the next event is reported as usual")
     .setContexts(InteractionContextType.Guild)
+    .addStringOption(option =>
+      option.setName('event').setDescription('Only this event; leave out to hush every live one').setAutocomplete(true)
+    ),
+  new SlashCommandBuilder()
+    .setName('unhush')
+    .setDescription('Resume updates from a hushed event')
+    .setContexts(InteractionContextType.Guild)
+    .addStringOption(option =>
+      option.setName('event').setDescription('Only this event; leave out to resume every live one').setAutocomplete(true)
+    )
 ].map(command => command.toJSON());
 
 /** A suggestion's value carries the country, so picking one follows that exact player. */
@@ -133,12 +148,53 @@ async function following(interaction: ChatInputCommandInteraction<'cached'>, con
   await interaction.reply(ephemeral(`${where}\n\n${list}`));
 }
 
+/** The live events an `event` option names, all of them when it is left out; empty after saying why. */
+async function pickedEvents(interaction: ChatInputCommandInteraction<'cached'>, context: Context): Promise<LiveEvent[]> {
+  const live = context.liveEvents();
+  const slug = interaction.options.getString('event');
+  const picked = slug ? live.filter(event => event.slug === slug) : live;
+  if (picked.length === 0) {
+    await interaction.reply(ephemeral(slug ? `${slug} isn't live right now.` : 'No events are live right now.'));
+  }
+  return picked;
+}
+
+function eventNames(events: readonly LiveEvent[]): string {
+  return events.map(event => event.name).join(', ');
+}
+
+async function hush(interaction: ChatInputCommandInteraction<'cached'>, context: Context): Promise<void> {
+  if (!canManage(interaction, context)) {
+    await interaction.reply(NOT_ALLOWED);
+    return;
+  }
+  const events = await pickedEvents(interaction, context);
+  if (events.length > 0) {
+    events.forEach(event => context.store.hush(interaction.guildId, event.slug));
+    await interaction.reply(ephemeral(`Hushed ${eventNames(events)} in this server. /unhush resumes it.`));
+  }
+}
+
+async function unhush(interaction: ChatInputCommandInteraction<'cached'>, context: Context): Promise<void> {
+  if (!canManage(interaction, context)) {
+    await interaction.reply(NOT_ALLOWED);
+    return;
+  }
+  const events = await pickedEvents(interaction, context);
+  if (events.length > 0) {
+    events.forEach(event => context.store.unhush(interaction.guildId, event.slug));
+    await interaction.reply(ephemeral(`Resumed ${eventNames(events)}, from the current round.`));
+  }
+}
+
 const handlers: Record<string, (interaction: ChatInputCommandInteraction<'cached'>, context: Context) => Promise<void>> = {
   setup: startSetup,
   follow,
   unfollow,
   'preferred-name': preferredName,
-  following
+  following,
+  hush,
+  unhush
 };
 
 export async function handleCommand(interaction: ChatInputCommandInteraction<'cached'>, context: Context): Promise<void> {
@@ -160,10 +216,28 @@ function playerChoices(query: string, follows: readonly Follow[], context: Conte
   return context.directory.search(query).map(f => choice(followLabel(followed.get(f.nameKey) ?? f), choiceValue(f)));
 }
 
+function eventChoices(query: string, context: Context): { name: string; value: string }[] {
+  const folded = foldName(query);
+  return context
+    .liveEvents()
+    .filter(event => foldName(event.name).includes(folded))
+    .slice(0, 25)
+    .map(event => choice(event.name, event.slug));
+}
+
+type Suggest = (query: string, interaction: AutocompleteInteraction<'cached'>, context: Context) => { name: string; value: string }[];
+
+const suggestFollowed: Suggest = (query, interaction, context) => followChoices(query, context.store.follows(interaction.guildId));
+
+const suggesters: Record<string, Suggest> = {
+  follow: (query, interaction, context) => playerChoices(query, context.store.follows(interaction.guildId), context),
+  unfollow: suggestFollowed,
+  'preferred-name': suggestFollowed,
+  hush: (query, _interaction, context) => eventChoices(query, context),
+  unhush: (query, _interaction, context) => eventChoices(query, context)
+};
+
 export async function handleAutocomplete(interaction: AutocompleteInteraction<'cached'>, context: Context): Promise<void> {
-  const query = interaction.options.getFocused();
-  const follows = context.store.follows(interaction.guildId);
-  const choices =
-    interaction.commandName === 'follow' ? playerChoices(query, follows, context) : followChoices(query, follows);
-  await interaction.respond(choices);
+  const suggest = suggesters[interaction.commandName] ?? suggestFollowed;
+  await interaction.respond(suggest(interaction.options.getFocused(), interaction, context));
 }

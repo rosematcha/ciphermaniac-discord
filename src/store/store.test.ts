@@ -55,6 +55,21 @@ describe('Store', () => {
     assert.ok(store.progress('g1', 'frankfurt-2027'));
   });
 
+  it('hushes an event per server, dropping its progress, until it leaves the schedule', () => {
+    const store = new Store(':memory:');
+    store.saveProgress('g1', 'recife-2027', { resultsDone: 3, messages: {} });
+    assert.equal(store.hush('g1', 'recife-2027'), true);
+    assert.equal(store.hush('g1', 'recife-2027'), false);
+    assert.equal(store.progress('g1', 'recife-2027'), null);
+    assert.deepEqual([...store.hushed('g1')], ['recife-2027']);
+    assert.deepEqual([...store.hushed('g2')], []);
+    store.pruneProgress(['louisville-2027']);
+    assert.deepEqual([...store.hushed('g1')], []);
+    store.hush('g1', 'louisville-2027');
+    assert.equal(store.unhush('g1', 'louisville-2027'), true);
+    assert.equal(store.unhush('g1', 'louisville-2027'), false);
+  });
+
   it('forgets a removed server', () => {
     const store = new Store(':memory:');
     store.setChannel('g1', 'c1');

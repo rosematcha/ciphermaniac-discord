@@ -230,4 +230,19 @@ describe('Runner', () => {
     await runner.tick(NOW);
     assert.deepEqual(world.fetches, []);
   });
+
+  it('stays quiet about a hushed event, reports the rest, and resumes at the current round', async () => {
+    const { store, sender, runner, publish } = setup();
+    store.hush('guild', 'frankfurt-2027');
+    publish('frankfurt-2027', frankfurt(false));
+    publish('brisbane-2027', brisbane(false));
+    await runner.tick(NOW);
+    assert.deepEqual(sender.posts.map(p => p.title), ['Brisbane · Round 5']);
+    assert.deepEqual(runner.liveEvents(NOW).map(e => e.slug), ['frankfurt-2027', 'brisbane-2027']);
+
+    store.unhush('guild', 'frankfurt-2027');
+    publish('frankfurt-2027', frankfurt(true), 'done');
+    await runner.tick(NOW);
+    assert.deepEqual(sender.posts.map(p => p.title), ['Brisbane · Round 5', 'Frankfurt · Round 3 results']);
+  });
 });

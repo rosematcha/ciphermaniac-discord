@@ -61,7 +61,13 @@ const databasePath = process.env.DATABASE_PATH ?? 'data/bot.db';
 mkdirSync(dirname(databasePath), { recursive: true });
 const store = new Store(databasePath);
 const directory = new Directory();
-const context: Context = { store, directory, ownerId: process.env.OWNER_ID ?? '' };
+let runner: Runner | null = null;
+const context: Context = {
+  store,
+  directory,
+  ownerId: process.env.OWNER_ID ?? '',
+  liveEvents: () => runner?.liveEvents() ?? []
+};
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const stop = new AbortController();
 const loops: Promise<void>[] = [];
@@ -79,15 +85,16 @@ client.once(Events.ClientReady, ready => {
   void ready.application.commands.set(commandData).catch((error: unknown) => {
     console.error('registering commands:', error);
   });
-  const runner = new Runner({
+  const tracker = new Runner({
     source: { fetchSchedule, fetchIndex, fetchRound, fetchDecks },
     sender: discordSender(ready),
     store,
     directory
   });
+  runner = tracker;
   loops.push(
     every(DIRECTORY_MS, () => loadDirectory(directory), stop.signal),
-    onTickOrNotice(alarm, () => runner.tick(), stop.signal)
+    onTickOrNotice(alarm, () => tracker.tick(), stop.signal)
   );
 });
 
